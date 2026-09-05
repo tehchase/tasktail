@@ -4,7 +4,8 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { RowMenu } from './RowMenu'
 import type { Task } from '../lib/types'
 import { formatPlanDate, isOverdue } from '../lib/dates'
 
@@ -37,8 +38,6 @@ export function TaskTable({
   onDuplicate: (t: Task) => void
   onDelete: (t: Task) => void
 }) {
-  const [menuFor, setMenuFor] = useState<string | null>(null)
-
   const columns = useMemo(
     () => [
       col.accessor('status', {
@@ -125,47 +124,19 @@ export function TaskTable({
         header: '',
         cell: (c) => {
           const t = c.row.original
-          const open = menuFor === t.id
           return (
-            <div className="relative text-right">
-              <button
-                onClick={() => setMenuFor(open ? null : t.id)}
-                aria-label="Row actions"
-                className="rounded px-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
-              >
-                ⋯
-              </button>
-              {open && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
-                  <div className="absolute right-0 z-20 mt-1 w-32 rounded-md border border-zinc-800 bg-zinc-900 py-1 text-left shadow-xl">
-                    {[
-                      ['Edit', () => onEdit(t)],
-                      ['Duplicate', () => onDuplicate(t)],
-                      ['Delete', () => onDelete(t)],
-                    ].map(([name, run]) => (
-                      <button
-                        key={name as string}
-                        onClick={() => {
-                          setMenuFor(null)
-                          ;(run as () => void)()
-                        }}
-                        className={`block w-full px-3 py-1.5 text-sm hover:bg-zinc-800 ${
-                          name === 'Delete' ? 'text-red-400' : 'text-zinc-300'
-                        }`}
-                      >
-                        {name as string}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <RowMenu
+              items={[
+                { label: 'Edit', run: () => onEdit(t) },
+                { label: 'Duplicate', run: () => onDuplicate(t) },
+                { label: 'Delete', run: () => onDelete(t), danger: true },
+              ]}
+            />
           )
         },
       }),
     ],
-    [menuFor, onToggleDone, onEdit, onDuplicate, onDelete],
+    [onToggleDone, onEdit, onDuplicate, onDelete],
   )
 
   const table = useReactTable({
