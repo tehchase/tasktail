@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useTasks } from '../hooks/useTasks'
 import { useToasts } from '../hooks/useToasts'
+import { usePrefs } from '../hooks/usePrefs'
 import { Toasts } from '../components/Toasts'
 import { Toolbar } from '../components/Toolbar'
 import { TaskTable } from '../components/TaskTable'
@@ -12,19 +13,18 @@ import { today } from '../lib/dates'
 
 export function List({ session }: { session: Session }) {
   const t = useTasks(session.user.id)
+  const { prefs, update, reset } = usePrefs(session.user.id)
   const { toasts, push, dismiss } = useToasts()
-  const [showDone, setShowDone] = useState(false)
+  const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
 
-  // Surface hook failures once each.
   useEffect(() => {
     if (!t.error) return
     push(t.error, { tone: 'error' })
     t.clearError()
   }, [t.error, push, t])
 
-  // `n` opens Add from anywhere (SPEC 4.3).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
@@ -40,24 +40,37 @@ export function List({ session }: { session: Session }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [modalOpen])
 
-  const visible = useMemo(
-    () => (showDone ? t.tasks : t.tasks.filter((x) => x.status !== 'done')),
-    [t.tasks, showDone],
-  )
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    let rows = t.tasks
+    if (!prefs.showDone) rows = rows.filter((x) => x.status !== 'done')
+    if (prefs.areaFilter !== 'all') rows = rows.filter((x) => x.area === prefs.areaFilter)
+    if (q) {
+      rows = rows.filter((x) =>
+        [x.title, x.project ?? '', x.notes ?? '', x.tags.join(' ')]
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      )
+    }
+
+    // TanStack sorts when a column sort is active. With none, useTasks already
+    // holds the default order — just group Work above Home in the All view.
+    if (prefs.sort === null && prefs.areaFilter === 'all') {
+      return [...rows].sort((a, b) => (a.area === b.area ? 0 : a.area === 'work' ? -1 : 1))
+    }
+    return rows
+  }, [t.tasks, prefs.showDone, prefs.areaFilter, prefs.sort, search])
 
   const staleCount = useMemo(() => {
     const d = today()
-    return t.tasks.filter(
-      (x) => x.status !== 'done' && x.plan_date !== null && x.plan_date < d,
-    ).length
+    return t.tasks.filter((x) => x.status !== 'done' && x.plan_date !== null && x.plan_date < d)
+      .length
   }, [t.tasks])
 
   async function handleSave(draft: TaskDraft, addAnother: boolean) {
-    if (editing) {
-      await t.update(editing.id, draft)
-    } else {
-      await t.add(draft)
-    }
+    if (editing) await t.update(editing.id, draft)
+    else await t.add(draft)
     if (!addAnother) {
       setModalOpen(false)
       setEditing(null)
@@ -91,6 +104,8 @@ export function List({ session }: { session: Session }) {
     })
   }
 
+  const defaultArea = prefs.areaFilter === 'all' ? 'work' : prefs.areaFilter
+
   return (
     <div className="min-h-dvh">
       <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-3">
@@ -107,8 +122,11 @@ export function List({ session }: { session: Session }) {
       </header>
 
       <Toolbar
-        showDone={showDone}
-        onToggleShowDone={setShowDone}
+        prefs={prefs}
+        onChange={update}
+        onReset={reset}
+        search={search}
+        onSearch={setSearch}
         onAdd={() => {
           setEditing(null)
           setModalOpen(true)
@@ -126,12 +144,23 @@ export function List({ session }: { session: Session }) {
           </div>
         ) : visible.length === 0 ? (
           <p className="px-3 py-16 text-center text-zinc-500">
-            Nothing here yet. Press <kbd className="text-zinc-400">n</kbd> to add a task.
+            {search.trim()
+              ? `Nothing matches “${search.trim()}”.`
+              : prefs.areaFilter === 'home'
+                ? 'Nothing for Home. Nice.'
+                : prefs.areaFilter === 'work'
+                  ? 'Nothing for Work. Nice.'
+                  : 'Nothing here yet. Press n to add a task.'}
           </p>
         ) : (
           <TaskTable
             tasks={visible}
+            prefs={prefs}
+            grouped={prefs.areaFilter === 'all' && prefs.sort === null}
+            projects={t.projects}
+            onSort={(next) => update({ sort: next })}
             onToggleDone={(task) => void t.toggleDone(task)}
+            onPatch={(id, patch) => void t.update(id, patch)}
             onEdit={(task) => {
               setEditing(task)
               setModalOpen(true)
@@ -145,7 +174,7 @@ export function List({ session }: { session: Session }) {
       <TaskModal
         open={modalOpen}
         task={editing}
-        defaultArea={editing?.area ?? 'work'}
+        defaultArea={editing?.area ?? defaultArea}
         projects={t.projects}
         onSave={handleSave}
         onClose={() => {
