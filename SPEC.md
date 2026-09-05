@@ -159,6 +159,10 @@ Area filter, search, header sort, inline editing, Columns popover with prefs syn
 ✅ Checkpoint: hide two columns on the Mac, reorder them, open the phone — layout matches.
 
 **Phase 4 — Archive, mobile cards, PWA, quick capture**
+Known from Phase 2 testing on iPhone: the Add/Edit modal is cramped at phone
+width — the plan-date and due-date inputs overflow their columns and collide
+with Priority, and the layout breaks further when the page is zoomed or not
+full-screen. Fix the modal's responsive layout here, alongside the card list.
 `/archive` route (with Recently deleted), card layout under 768px, manifest + icons, "Add to Home Screen" tested on iPhone and iPad, `capture` edge function + iOS Shortcut.
 ✅ Checkpoint: app icon on the phone home screen, opens full-screen; "Hey Siri, add to tasktail" creates a task.
 
