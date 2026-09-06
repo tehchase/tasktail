@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useTasks } from '../hooks/useTasks'
@@ -9,6 +9,7 @@ import { Toolbar } from '../components/Toolbar'
 import { TaskTable } from '../components/TaskTable'
 import { TaskModal } from '../components/TaskModal'
 import type { Task, TaskDraft } from '../lib/types'
+import type { SortState } from '../lib/prefs'
 import { today } from '../lib/dates'
 
 export function List({ session }: { session: Session }) {
@@ -77,12 +78,27 @@ export function List({ session }: { session: Session }) {
     }
   }
 
-  function handleDelete(task: Task) {
-    void t.softDelete(task.id)
-    push('Task deleted', { action: { label: 'Undo', run: () => void t.restore(task.id) } })
-  }
+  const handleDelete = useCallback(
+    (task: Task) => {
+      void t.softDelete(task.id)
+      push('Task deleted', { action: { label: 'Undo', run: () => void t.restore(task.id) } })
+    },
+    [t.softDelete, t.restore, push],
+  )
 
-  async function handleDuplicate(task: Task) {
+  const handleEdit = useCallback((task: Task) => {
+    setEditing(task)
+    setModalOpen(true)
+  }, [])
+
+  const handleToggleDone = useCallback((task: Task) => void t.toggleDone(task), [t.toggleDone])
+
+  const handlePatch = useCallback(
+    (id: string, patch: Partial<Task>) => void t.update(id, patch),
+    [t.update],
+  )
+
+  const handleDuplicate = useCallback(async (task: Task) => {
     await t.add({
       title: `${task.title} (copy)`,
       area: task.area,
@@ -94,7 +110,7 @@ export function List({ session }: { session: Session }) {
       status: 'todo',
       tags: task.tags,
     })
-  }
+  }, [t.add])
 
   async function handleRollForward() {
     const before = await t.rollForward()
@@ -103,6 +119,8 @@ export function List({ session }: { session: Session }) {
       action: { label: 'Undo', run: () => void t.undoRollForward(before) },
     })
   }
+
+  const handleSort = useCallback((next: SortState) => update({ sort: next }), [update])
 
   const defaultArea = prefs.areaFilter === 'all' ? 'work' : prefs.areaFilter
 
@@ -158,14 +176,11 @@ export function List({ session }: { session: Session }) {
             prefs={prefs}
             grouped={prefs.areaFilter === 'all' && prefs.sort === null}
             projects={t.projects}
-            onSort={(next) => update({ sort: next })}
-            onToggleDone={(task) => void t.toggleDone(task)}
-            onPatch={(id, patch) => void t.update(id, patch)}
-            onEdit={(task) => {
-              setEditing(task)
-              setModalOpen(true)
-            }}
-            onDuplicate={(task) => void handleDuplicate(task)}
+            onSort={handleSort}
+            onToggleDone={handleToggleDone}
+            onPatch={handlePatch}
+            onEdit={handleEdit}
+            onDuplicate={handleDuplicate}
             onDelete={handleDelete}
           />
         )}

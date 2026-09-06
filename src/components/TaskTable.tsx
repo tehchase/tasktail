@@ -6,10 +6,9 @@ import {
   getSortedRowModel,
   useReactTable,
   type SortingState,
-  type VisibilityState,
 } from '@tanstack/react-table'
 import type { Task } from '../lib/types'
-import { ALL_COLUMNS, type ColumnId, type Prefs, type SortState } from '../lib/prefs'
+import type { ColumnId, Prefs, SortState } from '../lib/prefs'
 import { formatPlanDate, isOverdue } from '../lib/dates'
 import { RowMenu } from './RowMenu'
 import { EditableCell } from './EditableCell'
@@ -253,21 +252,30 @@ export function TaskTable({
     [projects, onToggleDone, onPatch, onEdit, onDuplicate, onDelete],
   )
 
-  const sorting: SortingState = prefs.sort ? [{ id: prefs.sort.id, desc: prefs.sort.desc }] : []
+  const sorting: SortingState = useMemo(
+    () => (prefs.sort ? [{ id: prefs.sort.id, desc: prefs.sort.desc }] : []),
+    [prefs.sort],
+  )
 
-  const columnVisibility: VisibilityState = useMemo(() => {
-    const v: VisibilityState = {}
-    for (const id of ALL_COLUMNS) v[id] = !prefs.hidden.includes(id)
-    return v
-  }, [prefs.hidden])
-
-  // user order, then the pinned actions column
-  const columnOrder = useMemo(() => [...prefs.columns, 'actions'], [prefs.columns])
+  /*
+   * Order and hide by building the column array itself rather than handing
+   * TanStack controlled columnVisibility/columnOrder state. Passing those
+   * without their onChange handlers wedges the table in a render loop.
+   */
+  const orderedColumns = useMemo(() => {
+    const byId = new Map(columns.map((c) => [c.id as string, c]))
+    const shown = prefs.columns
+      .filter((id) => !prefs.hidden.includes(id))
+      .map((id) => byId.get(id))
+      .filter((c): c is (typeof columns)[number] => Boolean(c))
+    const actions = byId.get('actions')
+    return actions ? [...shown, actions] : shown
+  }, [columns, prefs.columns, prefs.hidden])
 
   const table = useReactTable({
     data: tasks,
-    columns,
-    state: { sorting, columnVisibility, columnOrder },
+    columns: orderedColumns,
+    state: { sorting },
     onSortingChange: (updater) => {
       const next = typeof updater === 'function' ? updater(sorting) : updater
       onSort(next.length === 0 ? null : { id: next[0].id as ColumnId, desc: next[0].desc })
